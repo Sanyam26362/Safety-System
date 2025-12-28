@@ -127,11 +127,23 @@ export const checkDuplicateIncident = async (req, res) => {
       return res.status(404).json({ message: "Incident not found" });
     }
 
+    if (
+      !newIncident.description ||
+      !newIncident.coordinates?.lat ||
+      !newIncident.coordinates?.lng
+    ) {
+      return res.status(400).json({
+        message: "Incident lacks required data for duplicate check"
+      });
+    }
+
     const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
 
     const recentIncidents = await Incident.find({
       _id: { $ne: incidentId },
-      createdAt: { $gte: thirtyMinutesAgo }
+      createdAt: { $gte: thirtyMinutesAgo },
+      "coordinates.lat": { $exists: true },
+      "coordinates.lng": { $exists: true }
     }).lean();
 
     const payload = {
@@ -139,28 +151,30 @@ export const checkDuplicateIncident = async (req, res) => {
         id: newIncident._id.toString(),
         type: newIncident.type,
         description: newIncident.description,
-        peopleAffected: newIncident.peopleAffected,
+        peopleAffected: newIncident.peopleAffected || 0,
         coordinates: newIncident.coordinates,
-        isVerified: newIncident.isVerified || false,
+        isVerified: Boolean(newIncident.isVerified),
         createdAt: newIncident.createdAt
       },
       existingIncidents: recentIncidents.map(i => ({
         id: i._id.toString(),
         type: i.type,
         description: i.description,
-        peopleAffected: i.peopleAffected,
+        peopleAffected: i.peopleAffected || 0,
         coordinates: i.coordinates,
-        isVerified: i.isVerified || false,
+        isVerified: Boolean(i.isVerified),
         createdAt: i.createdAt
       }))
     };
+
+    console.log("ML PAYLOAD:", JSON.stringify(payload, null, 2));
 
     const mlResponse = await axios.post(
       "https://sampark-jqtg.onrender.com/detect-duplicate",
       payload,
       {
         headers: { "Content-Type": "application/json" },
-        timeout: 15000
+        timeout: 30000    
       }
     );
 
@@ -170,7 +184,7 @@ export const checkDuplicateIncident = async (req, res) => {
     });
 
   } catch (err) {
-    console.error("Duplicate check error:", err.message);
+    console.error("Duplicate check error:", err.response?.data || err.message);
     res.status(500).json({
       message: "Duplicate check failed",
       error: "ML service failed"
