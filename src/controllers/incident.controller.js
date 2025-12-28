@@ -1,6 +1,6 @@
 import Incident from "../models/incident.model.js";
 import { io } from "../server.js";
-
+import fetch from "node-fetch";
 
 export const reportIncident = async (req, res) => {
   try {
@@ -94,9 +94,7 @@ export const updateIncident = async (req, res) => {
     });
   }
 };
-/* =====================================================
-   🧠 GET RECENT INCIDENTS (FOR ML DEDUPLICATION)
-   ===================================================== */
+
 export const getRecentIncidents = async (req, res) => {
   try {
     const minutes = parseInt(req.query.minutes) || 30;
@@ -120,4 +118,59 @@ export const getRecentIncidents = async (req, res) => {
     });
   }
 };
+export const checkDuplicateIncident = async (req, res) => {
+  try {
+    const { id } = req.params;
 
+    const incident = await Incident.findById(id);
+
+    if (!incident) {
+      return res.status(404).json({
+        message: "Incident not found"
+      });
+    }
+
+    const payload = {
+      incident: {
+        id: incident._id,
+        type: incident.type,
+        description: incident.description,
+        coordinates: incident.coordinates,
+        mediaUrl: incident.mediaUrl,
+        createdAt: incident.createdAt
+      }
+    };
+
+    const mlResponse = await fetch(
+      "https://sampark-jqtg.onrender.com/detect-duplicate",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload)
+      }
+    );
+
+    if (!mlResponse.ok) {
+      throw new Error("ML service failed");
+    }
+
+    const mlResult = await mlResponse.json();
+
+    // 4️⃣ Return ML result to frontend
+    res.json({
+      incidentId: id,
+      possibleDuplicate: mlResult.possibleDuplicate,
+      confidenceScore: mlResult.confidenceScore,
+      confidenceLabel: mlResult.confidenceLabel,
+      matches: mlResult.matches
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      message: "Duplicate check failed",
+      error: error.message
+    });
+  }
+};
