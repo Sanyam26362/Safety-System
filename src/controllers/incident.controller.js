@@ -2,43 +2,46 @@ import Incident from "../models/incident.model.js";
 import { io } from "../server.js";
 import fetch from "node-fetch";
 import axios from "axios";
-export const reportIncident = async (req, res) => {
-  try {
-    const {
-      caller,
-      type,
-      description,
-      peopleAffected,
-      coordinates
-    } = req.body;
+const DEFAULT_IMAGE_URL =
+  "https://res.cloudinary.com/drdkrikpk/image/upload/v1766937435/default.png";
 
-    if (!type || !description) {
-      return res.status(400).json({
-        message: "Type and description are required"
-      });
-    }
+// export const reportIncident = async (req, res) => {
+//   try {
+//     const {
+//       caller,
+//       type,
+//       description,
+//       peopleAffected,
+//       coordinates
+//     } = req.body;
 
-    const mediaUrl = req.file ? req.file.path : null;
+//     if (!type || !description) {
+//       return res.status(400).json({
+//         message: "Type and description are required"
+//       });
+//     }
 
-    const incident = await Incident.create({
-      caller: caller ? JSON.parse(caller) : undefined,
-      type,
-      description,
-      peopleAffected,
-      coordinates: coordinates ? JSON.parse(coordinates) : undefined,
-      mediaUrl
-    });
+//     const mediaUrl = req.file ? req.file.path : null;
 
-    io.emit("new_incident", incident);
+//     const incident = await Incident.create({
+//       caller: caller ? JSON.parse(caller) : undefined,
+//       type,
+//       description,
+//       peopleAffected,
+//       coordinates: coordinates ? JSON.parse(coordinates) : undefined,
+//       mediaUrl
+//     });
 
-    res.status(201).json(incident);
-  } catch (error) {
-    res.status(500).json({
-      message: "Failed to report incident",
-      error: error.message
-    });
-  }
-};
+//     io.emit("new_incident", incident);
+
+//     res.status(201).json(incident);
+//   } catch (error) {
+//     res.status(500).json({
+//       message: "Failed to report incident",
+//       error: error.message
+//     });
+//   }
+// };
 
 
 export const getAllIncidents = async (req, res) => {
@@ -127,24 +130,36 @@ export const checkDuplicateIncident = async (req, res) => {
       return res.status(404).json({ message: "Incident not found" });
     }
 
+    // 🚨 NEW INCIDENT MUST HAVE COORDINATES
     if (
-      !newIncident.description ||
-      !newIncident.coordinates?.lat ||
-      !newIncident.coordinates?.lng
+      !newIncident.coordinates ||
+      newIncident.coordinates.lat == null ||
+      newIncident.coordinates.lng == null
     ) {
       return res.status(400).json({
-        message: "Incident lacks required data for duplicate check"
+        message: "Incident lacks coordinates, duplicate check not possible"
       });
     }
 
-    const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
+    const sinceTime = new Date(Date.now() - 2 * 60 * 60 * 1000);
 
     const recentIncidents = await Incident.find({
       _id: { $ne: incidentId },
-      createdAt: { $gte: thirtyMinutesAgo },
+      createdAt: { $gte: sinceTime },
       "coordinates.lat": { $exists: true },
       "coordinates.lng": { $exists: true }
     }).lean();
+
+    if (recentIncidents.length === 0) {
+      return res.json({
+        incidentId,
+        possibleDuplicate: false,
+        confidenceScore: 0,
+        confidenceLabel: "LOW",
+        matches: [],
+        reason: "No recent incidents with coordinates"
+      });
+    }
 
     const payload = {
       newIncident: {
@@ -167,27 +182,68 @@ export const checkDuplicateIncident = async (req, res) => {
       }))
     };
 
-    console.log("ML PAYLOAD:", JSON.stringify(payload, null, 2));
+    console.log("📦 ML PAYLOAD:", JSON.stringify(payload, null, 2));
 
     const mlResponse = await axios.post(
       "https://sampark-jqtg.onrender.com/detect-duplicate",
       payload,
-      {
-        headers: { "Content-Type": "application/json" },
-        timeout: 30000    
-      }
+      { timeout: 20000 }
     );
 
-    res.json({
+    return res.json({
       incidentId,
       ...mlResponse.data
     });
 
   } catch (err) {
-    console.error("Duplicate check error:", err.response?.data || err.message);
-    res.status(500).json({
+    console.error("❌ Duplicate check error:", err.response?.data || err.message);
+    return res.status(500).json({
       message: "Duplicate check failed",
-      error: "ML service failed"
+      error: err.message
     });
   }
 };
+export const reportIncident = async (req, res) => {
+  try {
+    const {
+      caller,
+      type,
+      description,
+      peopleAffected,
+      coordinates
+    } = req.body;
+
+    if (!type || !description) {
+      return res.status(400).json({
+        message: "Type and description are required"
+      });
+    }
+
+    // ✅ DEFAULT IMAGE FALLBACK
+    const mediaUrl = req.file
+      ? req.file.path
+      : DEFAULT_IMAGE_URL;
+
+    const incident = await Incident.create({
+      caller: caller ? JSON.parse(caller) : undefined,
+      type,
+      description,
+      peopleAffected,
+      coordinates: coordinates ? JSON.parse(coordinates) : undefined,
+      mediaUrl
+    });
+
+    // socket emit is now SAFE
+    io.emit("new_incident", incident);
+
+    res.status(201).json(incident);
+  } catch (error) {
+    res.status(500).json({
+      message: "Failed to report incident",
+      error: error.message
+    });
+  }
+};
+
+
+
