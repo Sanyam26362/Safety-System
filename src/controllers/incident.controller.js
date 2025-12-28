@@ -1,9 +1,7 @@
 import Incident from "../models/incident.model.js";
 import { io } from "../server.js";
 
-/* ===============================
-   REPORT INCIDENT (WITH MEDIA)
-   =============================== */
+
 export const reportIncident = async (req, res) => {
   try {
     const {
@@ -20,7 +18,6 @@ export const reportIncident = async (req, res) => {
       });
     }
 
-    // 📷 Cloudinary URL
     const mediaUrl = req.file ? req.file.path : null;
 
     const incident = await Incident.create({
@@ -43,17 +40,13 @@ export const reportIncident = async (req, res) => {
   }
 };
 
-/* ===============================
-   GET ALL INCIDENTS
-   =============================== */
+
 export const getAllIncidents = async (req, res) => {
   const incidents = await Incident.find().sort({ createdAt: -1 });
   res.json(incidents);
 };
 
-/* ===============================
-   CONFIRM REAL
-   =============================== */
+
 export const confirmIncident = async (req, res) => {
   const incident = await Incident.findById(req.params.id);
   if (!incident) return res.status(404).json({ message: "Not found" });
@@ -67,9 +60,7 @@ export const confirmIncident = async (req, res) => {
   res.json(incident);
 };
 
-/* ===============================
-   REPORT FAKE
-   =============================== */
+
 export const reportFakeIncident = async (req, res) => {
   const incident = await Incident.findById(req.params.id);
   if (!incident) return res.status(404).json({ message: "Not found" });
@@ -80,9 +71,7 @@ export const reportFakeIncident = async (req, res) => {
   io.emit("incident_updated", incident);
   res.json(incident);
 };
-/* ===============================
-   ADMIN UPDATE INCIDENT STATUS
-   =============================== */
+
 export const updateIncident = async (req, res) => {
   try {
     const { status } = req.body;
