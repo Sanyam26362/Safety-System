@@ -1,7 +1,7 @@
 import Incident from "../models/incident.model.js";
 import { io } from "../server.js";
 import fetch from "node-fetch";
-
+import axios from "axios";
 export const reportIncident = async (req, res) => {
   try {
     const {
@@ -120,57 +120,61 @@ export const getRecentIncidents = async (req, res) => {
 };
 export const checkDuplicateIncident = async (req, res) => {
   try {
-    const { id } = req.params;
+    const incidentId = req.params.id;
 
-    const incident = await Incident.findById(id);
-
-    if (!incident) {
-      return res.status(404).json({
-        message: "Incident not found"
-      });
+    const newIncident = await Incident.findById(incidentId);
+    if (!newIncident) {
+      return res.status(404).json({ message: "Incident not found" });
     }
 
-    const payload = {
-      incident: {
+    const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
+
+    const existingIncidents = await Incident.find({
+      _id: { $ne: incidentId },
+      createdAt: { $gte: thirtyMinutesAgo }
+    });
+
+    const mlPayload = {
+      newIncident: {
+        id: newIncident._id,
+        type: newIncident.type,
+        description: newIncident.description,
+        peopleAffected: newIncident.peopleAffected,
+        coordinates: newIncident.coordinates,
+        isVerified: newIncident.isVerified,
+        createdAt: newIncident.createdAt
+      },
+      existingIncidents: existingIncidents.map((incident) => ({
         id: incident._id,
         type: incident.type,
         description: incident.description,
+        peopleAffected: incident.peopleAffected,
         coordinates: incident.coordinates,
-        mediaUrl: incident.mediaUrl,
+        isVerified: incident.isVerified,
         createdAt: incident.createdAt
-      }
+      }))
     };
 
-    const mlResponse = await fetch(
+    const mlResponse = await axios.post(
       "https://sampark-jqtg.onrender.com/detect-duplicate",
+      mlPayload,
       {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(payload)
+        headers: { "Content-Type": "application/json" },
+        timeout: 15000
       }
     );
 
-    if (!mlResponse.ok) {
-      throw new Error("ML service failed");
-    }
-
-    const mlResult = await mlResponse.json();
-
-    // 4️⃣ Return ML result to frontend
-    res.json({
-      incidentId: id,
-      possibleDuplicate: mlResult.possibleDuplicate,
-      confidenceScore: mlResult.confidenceScore,
-      confidenceLabel: mlResult.confidenceLabel,
-      matches: mlResult.matches
+    res.status(200).json({
+      incidentId,
+      ...mlResponse.data
     });
 
   } catch (error) {
+    console.error("ML ERROR:", error.response?.data || error.message);
+
     res.status(500).json({
       message: "Duplicate check failed",
-      error: error.message
+      error: "ML service failed"
     });
   }
 };
