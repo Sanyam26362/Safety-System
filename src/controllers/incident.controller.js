@@ -94,3 +94,30 @@ export const updateIncident = async (req, res) => {
     });
   }
 };
+/* =====================================================
+   🧠 GET RECENT INCIDENTS (FOR ML DEDUPLICATION)
+   ===================================================== */
+export const getRecentIncidents = async (req, res) => {
+  try {
+    const minutes = parseInt(req.query.minutes) || 30;
+
+    const sinceTime = new Date(
+      Date.now() - minutes * 60 * 1000
+    );
+
+    const incidents = await Incident.find({
+      createdAt: { $gte: sinceTime }
+    })
+      .select(
+        "type description coordinates mediaUrl createdAt"
+      )
+      .sort({ createdAt: -1 });
+
+    res.json(incidents);
+  } catch (error) {
+    res.status(500).json({
+      message: "Failed to fetch recent incidents"
+    });
+  }
+};
+

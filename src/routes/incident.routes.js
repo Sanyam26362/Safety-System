@@ -4,17 +4,22 @@ import {
   getAllIncidents,
   confirmIncident,
   reportFakeIncident,
-  updateIncident
+  updateIncident,
+  getRecentIncidents
 } from "../controllers/incident.controller.js";
+
+import { upload } from "../config/cloudinary.js"; // ✅ ADD THIS
 
 const router = express.Router();
 
-router.post("/", reportIncident);
+// MEDIA UPLOAD ENABLED
+router.post("/", upload.single("media"), reportIncident);
+
 router.get("/", getAllIncidents);
+router.get("/recent", getRecentIncidents);
 
 router.post("/:id/confirm", confirmIncident);
 router.post("/:id/fake", reportFakeIncident);
-
 router.patch("/:id", updateIncident);
 
 export default router;
