@@ -8,12 +8,12 @@ import {
   getRecentIncidents,
   checkDuplicateIncident
 } from "../controllers/incident.controller.js";
-
+import { reportLimiter, voteLimiter } from "../middlewares/rateLimiter.js";
 import { upload } from "../config/cloudinary.js"; 
 
 const router = express.Router();
 
-router.post("/", upload.single("media"), reportIncident);
+router.post("/", reportLimiter, upload.single("media"), reportIncident);
 
 router.get("/", getAllIncidents);
 router.get("/recent", getRecentIncidents);
